@@ -29,17 +29,21 @@ def generate_image():
     request_data = request.get_json()
     prompt = request_data.get('prompt', '')
     num_outputs = request_data.get('num_outputs', 1)
-    aspect_ratio = request_data.get('aspect_ratio', '1:1')
-    output_format = request_data.get('output_format', 'webp')
+    aspect_ratio = request_data.get('aspect_ratio', '')
+    output_format = request_data.get('output_format', '')
     output_quality = request_data.get('output_quality', 90)
-    model_type = request_data.get('model_type', 'simple')  # 新增参数 model_type
+    model_type = request_data.get('model_type', 'flux-schnell')  # 新增参数 model_type
 
-    app.logger.debug(f'model_type is : {model_type}')
+    # 设置默认值
+    if not aspect_ratio:
+        aspect_ratio = '1:1'
+    if not output_format:
+        output_format = 'jpg'
+
     if model_type == 'flux-dev':
         model_url = ADVANCED_MODEL_URL
     else:
         model_url = SIMPLE_MODEL_URL
-    app.logger.debug(f'using model to generate image : {model_url}')
 
     headers = {
         'Authorization': api_key,
@@ -51,7 +55,8 @@ def generate_image():
             "num_outputs": num_outputs,
             "aspect_ratio": aspect_ratio,
             "output_format": output_format,
-            "output_quality": output_quality
+            "output_quality": output_quality,
+            "disable_safety_checker":True
         }
     }
 
@@ -111,14 +116,19 @@ def check_status():
 
             status = result.get('status')
             if status == 'succeeded':
-                output_url = result.get('output')
-                return jsonify({'status': status, 'output': output_url})
+                # 处理 output，返回数组中的一个图像地址
+                output_urls = result.get('output', [])
+                if output_urls:
+                    return jsonify({'status': status, 'output': output_urls[0]})
+                else:
+                    app.logger.error('No output URLs found.')
+                    return jsonify({'status': status, 'error': 'No output URLs found'}), 500
 
             elif status == 'failed':
                 app.logger.error(f'Prediction failed: {result}')
                 return jsonify({'status': status, 'error': result.get('error')}), 500
 
-            time.sleep(5)  # 每隔5秒查询一次状态
+            time.sleep(2)  # 每隔3秒查询一次状态
         except requests.exceptions.RequestException as e:
             app.logger.error(f'Request exception: {e}')
             return jsonify({'error': 'Request failed'}), 500
